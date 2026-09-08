@@ -1,0 +1,9 @@
+# Source and build inputs — the bundled out/extension.js is all that ships.
+src/**
+esbuild.js
+tsconfig.json
+.vscode/**
+node_modules/**
+**/*.map
+**/*.ts
+.gitignore

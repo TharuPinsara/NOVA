@@ -31,9 +31,12 @@ from verifier.refspec.diagnostics import Diagnostic
 from verifier.refspec.driver import (PRELUDE_PATH, CompilationUnit, SourceMap,
                                      compile_source)
 from verifier.refspec.eval import Interpreter, NovaRuntimeError
-from .codegen_c import CodegenUnsupported, compile_to_native
-from .hir import lower_ast_to_hir
-from .mir import lower_hir_to_mir
+
+# `hir`/`mir`/`codegen_c` are only needed by build_file()'s native-codegen
+# path — `nova check` and `nova run` never touch them. Importing lazily
+# (inside build_file) keeps those two commands from paying for tempfile,
+# subprocess-adjacent codegen machinery, and the HIR/MIR module graph on
+# every invocation.
 
 
 @dataclass
@@ -122,6 +125,10 @@ class NovaCompiler:
         if err or not unit:
             return False, err, None
         t_typecheck_end = time.perf_counter()
+
+        from .codegen_c import CodegenUnsupported, compile_to_native
+        from .hir import lower_ast_to_hir
+        from .mir import lower_hir_to_mir
 
         # Lower AST -> HIR -> MIR (informational; also validates the lowering
         # passes do not choke on the program).

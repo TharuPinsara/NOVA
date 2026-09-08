@@ -30,6 +30,7 @@ def run_tests(pattern: str = "") -> int:
         ("Graded Effect Rows Suite", [sys.executable, os.path.join(repo_root, "tests", "grading", "run.py")]),
         ("Execution Tracing Suite", [sys.executable, os.path.join(repo_root, "tests", "tracing", "run.py")]),
         ("Toolchain Suite", [sys.executable, os.path.join(repo_root, "tests", "toolchain", "run.py")]),
+        ("Interpreter Implementation Suite", [sys.executable, os.path.join(repo_root, "tests", "interpreter", "run.py")]),
     ]
 
     for name, cmd in suites:

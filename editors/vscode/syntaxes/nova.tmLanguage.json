@@ -5,26 +5,21 @@
   "patterns": [
     { "include": "#comments" },
     { "include": "#strings" },
+    { "include": "#effect-rows" },
     { "include": "#keywords" },
     { "include": "#capabilities" },
-    { "include": "#effects" },
     { "include": "#types" },
     { "include": "#numbers" },
+    { "include": "#booleans" },
     { "include": "#operators" },
-    { "include": "#function_calls" }
+    { "include": "#function-decl" },
+    { "include": "#function-calls" }
   ],
   "repository": {
     "comments": {
       "patterns": [
-        {
-          "name": "comment.line.double-slash.nova",
-          "match": "//.*$"
-        },
-        {
-          "name": "comment.block.nova",
-          "begin": "/\\*",
-          "end": "\\*/"
-        }
+        { "name": "comment.line.double-slash.nova", "match": "//.*$" },
+        { "name": "comment.block.nova", "begin": "/\\*", "end": "\\*/" }
       ]
     },
     "strings": {
@@ -34,10 +29,28 @@
           "begin": "\"",
           "end": "\"",
           "patterns": [
-            {
-              "name": "constant.character.escape.nova",
-              "match": "\\\\."
-            }
+            { "name": "constant.character.escape.nova", "match": "\\\\." }
+          ]
+        }
+      ]
+    },
+    "effect-rows": {
+      "comment": "The `! { ... }` effect annotation on a function signature.",
+      "patterns": [
+        {
+          "begin": "(!)\\s*(\\{)",
+          "beginCaptures": {
+            "1": { "name": "keyword.operator.effect.nova" },
+            "2": { "name": "punctuation.definition.effect.begin.nova" }
+          },
+          "end": "\\}",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.effect.end.nova" }
+          },
+          "patterns": [
+            { "name": "entity.name.type.capability.nova", "match": "\\b[A-Z][a-zA-Z0-9_]*\\b" },
+            { "name": "variable.other.row.nova", "match": "\\b[a-z][a-zA-Z0-9_]*\\b" },
+            { "name": "punctuation.separator.nova", "match": "[,|]" }
           ]
         }
       ]
@@ -46,31 +59,24 @@
       "patterns": [
         {
           "name": "keyword.control.nova",
-          "match": "\\b(if|else|while|for|in|match|return)\\b"
+          "match": "\\b(if|else|while|for|in|match)\\b"
         },
         {
           "name": "keyword.declaration.nova",
-          "match": "\\b(fn|let|mut|struct|enum|trait|impl|import|capability|widen)\\b"
+          "match": "\\b(fn|let|mut|struct|enum|trait|impl|import|capability|pub|self)\\b"
         },
         {
-          "name": "keyword.other.contract.nova",
-          "match": "\\b(requires|ensures|invariant|assert|guarantee|property)\\b"
+          "name": "keyword.other.widen.nova",
+          "match": "(=\\s*)\\b(widen)\\b"
         }
       ]
     },
     "capabilities": {
+      "comment": "The capabilities that actually exist in std/prelude.nova.",
       "patterns": [
         {
           "name": "entity.name.type.capability.nova",
-          "match": "\\b(Runtime|Clock|Filesystem|Network|Database|Random|Process|GPU|AI|Distributed|Secret|Unsafe)\\b"
-        }
-      ]
-    },
-    "effects": {
-      "patterns": [
-        {
-          "name": "keyword.operator.effect.nova",
-          "match": "(!\\s*\\{[^}]*\\})"
+          "match": "\\b(Runtime|Clock|Filesystem|Network)\\b"
         }
       ]
     },
@@ -78,7 +84,11 @@
       "patterns": [
         {
           "name": "support.type.primitive.nova",
-          "match": "\\b(Int|Bool|String|Option|Result|List)\\b"
+          "match": "\\b(Int|Bool|String|Unit)\\b"
+        },
+        {
+          "name": "support.type.stdlib.nova",
+          "match": "\\b(Option|Result|List)\\b"
         },
         {
           "name": "entity.name.type.nova",
@@ -88,30 +98,49 @@
     },
     "numbers": {
       "patterns": [
-        {
-          "name": "constant.numeric.integer.nova",
-          "match": "\\b[0-9]+\\b"
-        },
-        {
-          "name": "constant.language.boolean.nova",
-          "match": "\\b(true|false)\\b"
-        }
+        { "name": "constant.numeric.integer.nova", "match": "\\b[0-9][0-9_]*\\b" }
+      ]
+    },
+    "booleans": {
+      "patterns": [
+        { "name": "constant.language.boolean.nova", "match": "\\b(true|false)\\b" }
       ]
     },
     "operators": {
       "patterns": [
+        { "name": "keyword.operator.arrow.nova", "match": "->" },
+        { "name": "keyword.operator.path.nova", "match": "::" },
+        { "name": "keyword.operator.comparison.nova", "match": "(==|!=|<=|>=|<|>)" },
+        { "name": "keyword.operator.logical.nova", "match": "(&&|\\|\\||!)" },
+        { "name": "keyword.operator.arithmetic.nova", "match": "(\\+|\\-|\\*|/)" },
+        { "name": "keyword.operator.assignment.nova", "match": "=" }
+      ]
+    },
+    "function-decl": {
+      "patterns": [
         {
-          "name": "keyword.operator.nova",
-          "match": "(\\+|\\-|\\*|/|==|!=|<=|>=|<|>|=|\\?|->|::)"
+          "match": "\\b(fn)\\s+([a-z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.nova" },
+            "2": { "name": "entity.name.function.nova" }
+          }
         }
       ]
     },
-    "function_calls": {
+    "function-calls": {
       "patterns": [
         {
           "match": "\\b([a-z_][a-zA-Z0-9_]*)\\s*\\(",
           "captures": {
             "1": { "name": "entity.name.function.nova" }
+          }
+        },
+        {
+          "comment": "method / capability operation call: recv.op(...)",
+          "match": "(\\.)([a-z_][a-zA-Z0-9_]*)\\s*\\(",
+          "captures": {
+            "1": { "name": "punctuation.accessor.nova" },
+            "2": { "name": "entity.name.function.method.nova" }
           }
         }
       ]

@@ -1,24 +1,42 @@
 {
   "name": "nova-lang",
   "displayName": "NOVA Language Support",
-  "description": "Official VS Code extension for the NOVA programming language with capability-typed effects and native LSP support.",
-  "version": "0.1.0",
+  "description": "Syntax highlighting, diagnostics, and toolchain commands for the NOVA programming language (capability-typed effects).",
+  "version": "0.2.0",
   "publisher": "ieeecsopen",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ieeecsopen/NOVA.git",
+    "directory": "editors/vscode"
+  },
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
-    "Programming Languages",
-    "Linters",
-    "Formatters"
+    "Programming Languages"
+  ],
+  "keywords": [
+    "nova",
+    "capability",
+    "effect system",
+    "type system"
   ],
   "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:nova"
+  ],
   "contributes": {
     "languages": [
       {
         "id": "nova",
-        "aliases": ["NOVA", "nova"],
-        "extensions": [".nova", ".rlab"],
+        "aliases": [
+          "NOVA",
+          "nova"
+        ],
+        "extensions": [
+          ".nova"
+        ],
         "configuration": "./language-configuration.json"
       }
     ],
@@ -31,17 +49,90 @@
     ],
     "commands": [
       {
+        "command": "nova.check",
+        "title": "NOVA: Check (type & effects)",
+        "category": "NOVA"
+      },
+      {
         "command": "nova.run",
-        "title": "NOVA: Run Current File"
+        "title": "NOVA: Run current file",
+        "category": "NOVA"
       },
       {
         "command": "nova.build",
-        "title": "NOVA: Build Native Executable"
+        "title": "NOVA: Build current file",
+        "category": "NOVA"
       },
       {
-        "command": "nova.check",
-        "title": "NOVA: Type and Effect Check"
+        "command": "nova.restartServer",
+        "title": "NOVA: Restart language server",
+        "category": "NOVA"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "resourceLangId == nova",
+          "command": "nova.check",
+          "group": "nova@1"
+        },
+        {
+          "when": "resourceLangId == nova",
+          "command": "nova.run",
+          "group": "nova@2"
+        },
+        {
+          "when": "resourceLangId == nova",
+          "command": "nova.build",
+          "group": "nova@3"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "nova.check",
+          "when": "resourceLangId == nova"
+        },
+        {
+          "command": "nova.run",
+          "when": "resourceLangId == nova"
+        },
+        {
+          "command": "nova.build",
+          "when": "resourceLangId == nova"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "NOVA",
+      "properties": {
+        "nova.toolchainPath": {
+          "type": "string",
+          "default": "nova",
+          "description": "Path to the `nova` executable. Defaults to `nova` on PATH; set to an absolute path (e.g. the `nova` script at the repo root) if it is not installed globally."
+        },
+        "nova.languageServer.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run `nova lsp` for live diagnostics and completion. Disable to use syntax highlighting only."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "node esbuild.js --production",
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit",
+    "package": "npm run typecheck && node esbuild.js --production && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.75.0",
+    "@vscode/vsce": "^2.24.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.4.0"
   }
 }

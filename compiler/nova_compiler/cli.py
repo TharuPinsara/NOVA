@@ -24,20 +24,12 @@ import os
 import sys
 import time
 
+# `NovaCompiler` backs check/build/run/dev/bench — the commands run most
+# often — so it stays a top-level import. Every other subcommand's module
+# is imported lazily inside its own branch below: `nova check` has no
+# reason to pay for `pkg.py`'s `tarfile`/`hashlib` imports, `lsp_server`,
+# `docgen`, etc. on every invocation.
 from .driver import NovaCompiler
-from .fmt import format_file
-from .lint import lint_file
-from .test_runner import run_tests
-from .docgen import generate_docs
-from .pkg import (
-    init_new_package,
-    add_dependency,
-    remove_dependency,
-    update_dependencies,
-    publish_package,
-    deploy_application,
-)
-from .lsp_server import NovaLSPServer
 
 
 def main(argv: list[str] = None) -> int:
@@ -134,6 +126,7 @@ def main(argv: list[str] = None) -> int:
     compiler = NovaCompiler()
 
     if args.command == "new":
+        from .pkg import init_new_package
         init_new_package(args.name)
         return 0
 
@@ -203,9 +196,11 @@ def main(argv: list[str] = None) -> int:
         return compiler.run_file(args.file, args=args.args)
 
     elif args.command == "test":
+        from .test_runner import run_tests
         return run_tests(args.pattern)
 
     elif args.command == "fmt":
+        from .fmt import format_file
         targets = []
         for f in args.files:
             if os.path.isfile(f):
@@ -224,6 +219,7 @@ def main(argv: list[str] = None) -> int:
         return 0 if all_ok else 1
 
     elif args.command == "lint":
+        from .lint import lint_file
         targets = []
         for f in args.files:
             if os.path.isfile(f):
@@ -251,30 +247,37 @@ def main(argv: list[str] = None) -> int:
             return 0
 
     elif args.command == "doc":
+        from .docgen import generate_docs
         generate_docs(args.path, output_dir=args.output)
         return 0
 
     elif args.command == "add":
+        from .pkg import add_dependency
         ok = add_dependency(args.pkg, version=args.version, capabilities=args.caps)
         return 0 if ok else 1
 
     elif args.command == "remove":
+        from .pkg import remove_dependency
         remove_dependency(args.pkg)
         return 0
 
     elif args.command == "update":
+        from .pkg import update_dependencies
         update_dependencies()
         return 0
 
     elif args.command == "publish":
+        from .pkg import publish_package
         publish_package(output_dir=args.output)
         return 0
 
     elif args.command == "deploy":
+        from .pkg import deploy_application
         deploy_application(target=args.target, output_dir=args.output)
         return 0
 
     elif args.command == "lsp":
+        from .lsp_server import NovaLSPServer
         server = NovaLSPServer()
         server.run()
         return 0

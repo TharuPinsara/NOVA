@@ -45,7 +45,10 @@ def slug(heading: str) -> str:
 
 
 def main() -> int:
-    docs = [p for p in ROOT.rglob('*.md') if '.git' not in p.parts]
+    _skip = {'.git', 'node_modules', '__pycache__', '.nova_cache',
+             'dist', 'out', 'target'}
+    docs = [p for p in ROOT.rglob('*.md')
+            if _skip.isdisjoint(p.parts)]
     anchors = {p: {slug(m.group(2)) for m in HEADING.finditer(p.read_text())}
                for p in docs}
 

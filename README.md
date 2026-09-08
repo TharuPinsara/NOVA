@@ -5,7 +5,7 @@
 [![CI](https://github.com/ieeecsopen/NOVA/actions/workflows/ci.yml/badge.svg)](https://github.com/ieeecsopen/NOVA/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-0.2_research_preview-f59e0b.svg)](ROADMAP.md)
-[![Conformance](https://img.shields.io/badge/Conformance-49%2F49-0e8a16.svg)](tests/conformance/)
+[![Conformance](https://img.shields.io/badge/Conformance-50%2F50-0e8a16.svg)](tests/conformance/)
 [![RegionLab](https://img.shields.io/badge/RegionLab-14%2F14-0e8a16.svg)](regionlab/)
 
 **A constraint-native programming language — research preview**
@@ -133,6 +133,17 @@ a binary it cannot compile.
 ./nova check examples/hello.nova --emit-hir --emit-mir
 ```
 
+### Editor support
+
+```bash
+cd editors/vscode && npm install && npm run package
+```
+
+produces `nova-lang-<version>.vsix` — syntax highlighting, live
+diagnostics (via `nova lsp`), completion, and `NOVA: Check / Run / Build`
+commands. Set `nova.toolchainPath` to the repo's `nova` script if it is
+not on your `PATH`.
+
 ---
 
 ## What actually works today
@@ -150,12 +161,14 @@ a binary it cannot compile.
 | Prelude capabilities: `Runtime`, `Clock`, `Filesystem`, `Network` | **Working** in the interpreter |
 | Reference interpreter | **Working**, authoritative |
 | Native C backend | **First-order subset only** ([known-issues](docs/known-issues.md) C1) |
+| Language server (`nova lsp`) | **Minimal** — diagnostics, completion, formatting |
+| VS Code extension | **Working** — [editors/vscode/](editors/vscode/), builds to a `.vsix` |
 | `regionlab` region/ownership checker | **Prototype**, separate, [regionlab/](regionlab/) |
 | HIR / MIR | **Informational scaffolding** ([known-issues](docs/known-issues.md) C2) |
 | Package registry, `attenuate`, string ops, WASM Component Model | **Not implemented** |
 | Distributed runtime, WASM UI, AI-agent governance, concurrency runtime | **Design only** — see [ROADMAP.md](ROADMAP.md) |
 
-The 49-test conformance suite (`tests/conformance/`) is the shared
+The 50-test conformance suite (`tests/conformance/`) is the shared
 arbiter for the semantics; it includes explicit attack cases (return a
 capability, stash it in a let-bound closure, hide an effect in one
 `match` arm).

@@ -99,5 +99,15 @@ echo "== toolchain (nova fmt / lint / add, diagnostic rendering) =="
 echo "examples are canonically formatted"
 
 echo
+echo "== interpreter implementation properties (recursion, dispatch) =="
+"$PYTHON" tests/interpreter/run.py
+
+echo
 echo "== regionlab (Milestone 1 prototype, docs/regionlab) =="
 "$PYTHON" regionlab/tests/run.py
+
+echo
+echo "== vscode extension: LSP smoke test =="
+# Confirms `nova lsp` answers initialize / completion / diagnostics — the
+# three things the VS Code client depends on. Does not require npm.
+"$PYTHON" editors/vscode/test/lsp_smoke.py

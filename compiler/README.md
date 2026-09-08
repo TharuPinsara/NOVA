@@ -31,6 +31,18 @@ Lexer → Parser → AST → name/module resolution → type & effect inference
 surfaced by `--emit-hir` / `--emit-mir`. They are not on the execution
 path and are not a full IR yet.
 
+## Import discipline in `cli.py` / `driver.py`
+
+Every subcommand's own module is imported **inside its branch**, not at
+the top of `cli.py` — `nova check` has no reason to pay for `pkg.py`'s
+`tarfile`/`hashlib`, or `lsp_server`, `docgen`, `fmt`, `lint` on every
+invocation. Likewise `driver.py` only imports `hir`/`mir`/`codegen_c`
+inside `build_file()`, past its cache-hit fast path, since `check_file()`
+and `run_file()` never touch native codegen. Keep new subcommands and new
+`NovaCompiler` methods lazy in the same way — this is what took `nova
+check`'s median invocation from ~121ms to ~86ms (see `docs/known-issues.md`
+C5). It is pure process-startup overhead, not compiled-program speed.
+
 ## The native C backend
 
 `codegen_c.py` lowers a **supported subset** to C99 and links it with

@@ -1,0 +1,36 @@
+//! expect: ok
+//! stdout: built
+//! exit: 4950
+// Regression pin for the interpreter's dispatch table (eval.py's
+// `_EVAL_DISPATCH`/`_PATTERN_DISPATCH`, replacing a linear `isinstance`
+// chain): a `while`-built List[T] summed by recursive `match` traversal
+// must still produce the exact value an isinstance-chain interpreter
+// would -- dispatch-by-exact-type must not silently pick the wrong
+// handler for any node or pattern shape this program exercises (Binary,
+// Assign, While, Call, Match, PVariant, PBind, PWildcard all appear
+// here). 0+1+...+99 = 4950.
+
+import std.list;
+
+fn sum_list(xs: List[Int]) -> Int {
+    match xs {
+        List::Cons(x, rest) => x + sum_list(rest),
+        List::Nil => 0,
+    }
+}
+
+fn build_list(n: Int) -> List[Int] {
+    let mut xs = empty();
+    let mut i = 0;
+    while i < n {
+        xs = prepend(i, xs);
+        i = i + 1;
+    }
+    xs
+}
+
+fn main(rt: Runtime) -> Int ! {Runtime} {
+    let xs = build_list(100);
+    rt.print("built");
+    sum_list(xs)
+}
