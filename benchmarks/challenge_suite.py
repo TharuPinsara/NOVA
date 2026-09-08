@@ -76,6 +76,41 @@ def bench_run(files: list[str]) -> dict:
     return out
 
 
+def bench_list_allocations() -> dict:
+    program = os.path.join(REPO_ROOT, "benchmarks", "list_alloc.nova")
+    env = os.environ.copy()
+    env["NOVA_BENCH_LIST_ALLOC"] = "1"
+    res = subprocess.run(
+        [NOVA, "run", program],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if res.returncode != 0:
+        return {
+            "ok": False,
+            "error": (
+                f"returncode={res.returncode}\n"
+                f"stdout={res.stdout.strip()}\n"
+                f"stderr={res.stderr.strip()}"
+            ),
+        }
+
+    for line in res.stderr.splitlines():
+        if line.startswith("NOVA_LIST_ALLOC "):
+            parts = line.split()
+            allocated_bytes = int(parts[1].split("=")[1])
+            allocation_count = int(parts[2].split("=")[1])
+            return {
+                "ok": True,
+                "allocated_bytes": allocated_bytes,
+                "allocation_count": allocation_count,
+            }
+
+    return {"ok": False, "error": "missing NOVA_LIST_ALLOC in stderr"}
+
+
 def main(argv: list[str]) -> int:
     as_json = "--json" in argv
     files = _sample_files()
@@ -89,6 +124,7 @@ def main(argv: list[str]) -> int:
     check = bench_check(files)
     build = bench_build_cache(hello)
     run = bench_run(files)
+    list_alloc = bench_list_allocations()
 
     check_med = statistics.median(v["median_ms"] for v in check.values())
     run_med = statistics.median(v["median_ms"] for v in run.values())
@@ -98,6 +134,7 @@ def main(argv: list[str]) -> int:
         "run_median_ms_across_examples": round(run_med, 2),
         "build_hello_clean_ms": build["clean"]["median_ms"],
         "build_hello_cached_ms": build["cached"]["median_ms"],
+        "list_allocations": list_alloc,
         "per_file": {"check": check, "run": run},
         "note": ("Wall-clock on this machine. Not a cross-language "
                  "comparison — see README.md."),
@@ -111,6 +148,8 @@ def main(argv: list[str]) -> int:
         print(f"  nova run     median across examples : {run_med:.2f} ms")
         print(f"  nova build hello.nova  (clean)      : {build['clean']['median_ms']:.2f} ms")
         print(f"  nova build hello.nova  (cached)     : {build['cached']['median_ms']:.2f} ms")
+        if list_alloc.get("ok"):
+            print(f"  list allocations (10k items)        : {list_alloc['allocation_count']} nodes ({list_alloc['allocated_bytes']:,} bytes)")
         print()
         print("  Wall-clock on this machine. Not a cross-language comparison.")
 

@@ -8,7 +8,16 @@ needs to know about generics or trait bounds, because both are erased by
 the time a program typechecks (RFC 0003 §5).
 
 This evaluator assumes the program has passed `check.py`. It is written
-for obviousness, not speed.
+for obviousness, not speed — with one exception: `eval`/`_match_pattern`
+dispatch by exact AST node type through a `dict[type, method]` table
+built once per class, rather than a chain of `isinstance` checks tried in
+declaration order. Every concrete `Expr`/`Pattern` subclass is a direct,
+non-nested subclass (see ast.py), so exact-type dispatch is equivalent to
+the old isinstance chain, just without re-testing every earlier case on
+every call. On a workload dominated by function calls and arithmetic,
+`Call`/`Binary`/`Var` used to be checked last or mid-chain on every single
+node; profiling (`cProfile`, ~8M `eval` calls on a loop+recursion+list
+stress program) showed `isinstance` itself costing ~19% of total time.
 
 **Local bindings are cells, not values** (`env[name]` is a one-element
 list `[value]`, not the value itself). This is what makes `let mut` +
@@ -26,6 +35,7 @@ escaping values. See RFC 0005 §4 for the full argument.
 from __future__ import annotations
 
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 
@@ -113,11 +123,42 @@ def _runtime_head(v) -> str | None:
     return None
 
 
+_BINARY_OPS = {
+    "+": lambda x, y: x + y,
+    "-": lambda x, y: x - y,
+    "*": lambda x, y: x * y,
+    "/": lambda x, y: int(x / y) if (x < 0) != (y < 0) else x // y,
+    "==": lambda x, y: x == y,
+    "!=": lambda x, y: x != y,
+    "<": lambda x, y: x < y,
+    "<=": lambda x, y: x <= y,
+    ">": lambda x, y: x > y,
+    ">=": lambda x, y: x >= y,
+}
+
+# The interpreter recurses once per AST node and again per NOVA function
+# call (eval -> apply -> call_fn -> eval -> ...), so NOVA call depth costs
+# several Python stack frames each. The default CPython limit (1000)
+# caps NOVA recursion at only a few hundred frames — raised here so a
+# moderately recursive NOVA program (RFC 0001 has no tail-call guarantee)
+# doesn't hit a Python RecursionError before it hits any NOVA-level limit.
+# This is a mitigation, not a fix: deep enough recursion still exhausts
+# the *C* stack (a segfault, not a catchable exception) well before this
+# number is reached. A real fix needs an explicit evaluation stack
+# (trampolining `eval`), which is a larger change tracked in
+# docs/known-issues.md.
+_MIN_RECURSION_LIMIT = 10_000
+if sys.getrecursionlimit() < _MIN_RECURSION_LIMIT:
+    sys.setrecursionlimit(_MIN_RECURSION_LIMIT)
+
+
 class Interpreter:
     def __init__(self, result: CheckResult, out=None) -> None:
         self.r = result
         self.out = out if out is not None else []
         self._t0 = time.monotonic_ns()
+        self.list_allocation_count = 0
+        self.list_allocation_bytes = 0
 
     # ------------------------------------------------ host capabilities
     def make_runtime(self) -> CapValue:
@@ -191,7 +232,30 @@ class Interpreter:
             raise NovaRuntimeError("no `main` function")
         fn = self.r.fns["main"].decl
         env = {fn.params[0].name: [self.make_runtime()]}
-        return self.eval(fn.body, env)
+        # A `RecursionError` is caught only here, at the single outermost
+        # frame, never inside `eval` itself: catching it at every nested
+        # `eval` call would mean thousands of unwinding frames each running
+        # exception-handling code, which itself needs stack space that
+        # isn't there (see I6, docs/known-issues.md) — this is a NOVA
+        # program hitting a real depth ceiling, not a Python bug, so it
+        # gets a clean diagnostic instead of a raw interpreter traceback.
+        try:
+            res = self.eval(fn.body, env)
+            if os.environ.get("NOVA_BENCH_LIST_ALLOC") == "1":
+                print(
+                    f"NOVA_LIST_ALLOC "
+                    f"bytes={self.list_allocation_bytes} "
+                    f"count={self.list_allocation_count}",
+                    file=sys.stderr,
+                )
+            return res
+        except RecursionError:
+            raise NovaRuntimeError(
+                "recursion depth exceeded — this program recurses too "
+                "deeply for the reference interpreter to evaluate "
+                "(see docs/known-issues.md I6; NOVA has no tail-call "
+                "guarantee, and Python's own call stack backs this "
+                "interpreter's recursion)") from None
 
     def call_fn(self, name: str, args: list):
         fn = self.r.fns[name].decl
@@ -206,139 +270,170 @@ class Interpreter:
 
     # ----------------------------------------------------------- eval
     def eval(self, e, env: dict):
-        if isinstance(e, a.IntLit):
-            return e.value
-        if isinstance(e, a.StrLit):
-            return e.value
-        if isinstance(e, a.BoolLit):
-            return e.value
-        if isinstance(e, a.UnitLit):
-            return UNIT_VALUE
+        handler = self._EVAL_DISPATCH.get(type(e))
+        if handler is None:
+            raise AssertionError(f"unhandled expression: {type(e).__name__}")
+        return handler(self, e, env)
 
-        if isinstance(e, a.Var):
-            if e.name in env:
-                return env[e.name][0]
-            if e.name in self.r.fns:
-                return ("fn", e.name)
-            raise NovaRuntimeError(f"unbound variable {e.name}")
+    def _eval_IntLit(self, e: a.IntLit, env: dict):
+        return e.value
 
-        if isinstance(e, a.Unary):
-            v = self.eval(e.operand, env)
-            return -v if e.op == "-" else (not v)
+    def _eval_StrLit(self, e: a.StrLit, env: dict):
+        return e.value
 
-        if isinstance(e, a.Binary):
-            if e.op == "&&":
-                return self.eval(e.left, env) and self.eval(e.right, env)
-            if e.op == "||":
-                return self.eval(e.left, env) or self.eval(e.right, env)
-            lv = self.eval(e.left, env)
-            rv = self.eval(e.right, env)
-            if e.op == "/" and rv == 0:
-                raise Diagnostic("E0300", "division by zero",
-                                 [Label(e.span, "evaluated here")])
-            ops = {
-                "+": lambda x, y: x + y,
-                "-": lambda x, y: x - y,
-                "*": lambda x, y: x * y,
-                "/": lambda x, y: int(x / y) if (x < 0) != (y < 0) else x // y,
-                "==": lambda x, y: x == y,
-                "!=": lambda x, y: x != y,
-                "<": lambda x, y: x < y,
-                "<=": lambda x, y: x <= y,
-                ">": lambda x, y: x > y,
-                ">=": lambda x, y: x >= y,
-            }
-            return ops[e.op](lv, rv)
+    def _eval_BoolLit(self, e: a.BoolLit, env: dict):
+        return e.value
 
-        if isinstance(e, a.If):
-            return self.eval(e.then if self.eval(e.cond, env) else e.els, env)
+    def _eval_UnitLit(self, e: a.UnitLit, env: dict):
+        return UNIT_VALUE
 
-        if isinstance(e, a.While):
-            while self.eval(e.cond, env):
-                self.eval(e.body, env)
-            return UNIT_VALUE
+    def _eval_Var(self, e: a.Var, env: dict):
+        if e.name in env:
+            return env[e.name][0]
+        if e.name in self.r.fns:
+            return ("fn", e.name)
+        raise NovaRuntimeError(f"unbound variable {e.name}")
 
-        if isinstance(e, a.For):
-            cur = self.eval(e.iter, env)
-            while isinstance(cur, EnumValue) and cur.variant == "Cons":
-                inner = dict(env)
-                inner[e.var] = [cur.args[0]]
-                self.eval(e.body, inner)
-                cur = cur.args[1]
-            return UNIT_VALUE
+    def _eval_Unary(self, e: a.Unary, env: dict):
+        v = self.eval(e.operand, env)
+        return -v if e.op == "-" else (not v)
 
-        if isinstance(e, a.Assign):
-            env[e.name][0] = self.eval(e.value, env)
-            return UNIT_VALUE
+    def _eval_Binary(self, e: a.Binary, env: dict):
+        if e.op == "&&":
+            return self.eval(e.left, env) and self.eval(e.right, env)
+        if e.op == "||":
+            return self.eval(e.left, env) or self.eval(e.right, env)
+        lv = self.eval(e.left, env)
+        rv = self.eval(e.right, env)
+        if e.op == "/" and rv == 0:
+            raise Diagnostic("E0300", "division by zero",
+                             [Label(e.span, "evaluated here")])
+        return _BINARY_OPS[e.op](lv, rv)
 
-        if isinstance(e, a.Block):
+    def _eval_If(self, e: a.If, env: dict):
+        return self.eval(e.then if self.eval(e.cond, env) else e.els, env)
+
+    def _eval_While(self, e: a.While, env: dict):
+        while self.eval(e.cond, env):
+            self.eval(e.body, env)
+        return UNIT_VALUE
+
+    def _eval_For(self, e: a.For, env: dict):
+        cur = self.eval(e.iter, env)
+        while isinstance(cur, EnumValue) and cur.variant == "Cons":
             inner = dict(env)
-            for st in e.stmts:
-                if isinstance(st, a.Let):
-                    inner[st.name] = [self.eval(st.value, inner)]
-                else:
-                    self.eval(st, inner)
-            return UNIT_VALUE if e.tail is None else self.eval(e.tail, inner)
+            inner[e.var] = [cur.args[0]]
+            self.eval(e.body, inner)
+            cur = cur.args[1]
+        return UNIT_VALUE
 
-        if isinstance(e, a.Lambda):
-            return Closure(e.params, e.body, dict(env))
+    def _eval_Assign(self, e: a.Assign, env: dict):
+        env[e.name][0] = self.eval(e.value, env)
+        return UNIT_VALUE
 
-        if isinstance(e, a.TupleLit):
-            return tuple(self.eval(x, env) for x in e.elems)
+    def _eval_Block(self, e: a.Block, env: dict):
+        inner = dict(env)
+        for st in e.stmts:
+            if isinstance(st, a.Let):
+                inner[st.name] = [self.eval(st.value, inner)]
+            else:
+                self.eval(st, inner)
+        return UNIT_VALUE if e.tail is None else self.eval(e.tail, inner)
 
-        if isinstance(e, a.StructLit):
-            return StructValue(e.name, {n: self.eval(v, env)
-                                        for n, v in e.fields})
+    def _eval_Lambda(self, e: a.Lambda, env: dict):
+        return Closure(e.params, e.body, dict(env))
 
-        if isinstance(e, a.EnumCtor):
-            return EnumValue(e.enum_name, e.variant,
-                             tuple(self.eval(x, env) for x in e.args))
+    def _eval_TupleLit(self, e: a.TupleLit, env: dict):
+        return tuple(self.eval(x, env) for x in e.elems)
 
-        if isinstance(e, a.FieldAccess):
-            recv = self.eval(e.recv, env)
-            if isinstance(recv, StructValue):
-                return recv.fields[e.field]
-            if isinstance(recv, tuple):
-                return recv[int(e.field)]
-            raise NovaRuntimeError(f"no field `{e.field}` on {recv!r}")
+    def _eval_StructLit(self, e: a.StructLit, env: dict):
+        return StructValue(e.name, {n: self.eval(v, env)
+                                    for n, v in e.fields})
 
-        if isinstance(e, a.Match):
-            v = self.eval(e.scrutinee, env)
-            for arm in e.arms:
-                inner = dict(env)
-                if self._match_pattern(arm.pattern, v, inner):
-                    return self.eval(arm.body, inner)
-            raise NovaRuntimeError(f"no pattern matched {v!r}")
+    def _eval_EnumCtor(self, e: a.EnumCtor, env: dict):
+        value = EnumValue(e.enum_name, e.variant,
+                          tuple(self.eval(x, env) for x in e.args))
+        if e.enum_name == "List":
+            self.list_allocation_count += 1
+            self.list_allocation_bytes += (
+                sys.getsizeof(value) + sys.getsizeof(value.args)
+            )
+        return value
 
-        if isinstance(e, a.Call):
-            f = self.eval(e.callee, env)
-            args = [self.eval(x, env) for x in e.args]
-            return self.apply(f, args, e)
+    def _eval_FieldAccess(self, e: a.FieldAccess, env: dict):
+        recv = self.eval(e.recv, env)
+        if isinstance(recv, StructValue):
+            return recv.fields[e.field]
+        if isinstance(recv, tuple):
+            return recv[int(e.field)]
+        raise NovaRuntimeError(f"no field `{e.field}` on {recv!r}")
 
-        if isinstance(e, a.MethodCall):
-            recv = self.eval(e.recv, env)
-            args = [self.eval(x, env) for x in e.args]
-            if isinstance(recv, CapValue):
-                impl = recv.ops.get(e.op)
-                if impl is None:
-                    raise Diagnostic(
-                        "E0301",
-                        f"`{recv.cap_name}.{e.op}` has no host implementation",
-                        [Label(e.op_span, "cannot be executed")],
-                        notes=["the reference interpreter implements only "
-                               "the prelude capabilities; this program can "
-                               "be checked but not run"])
-                return impl(*args)
-            head = _runtime_head(recv)
-            found = [info for (_, h), info in self.r.impls.items()
-                    if h == head and e.op in info.methods]
-            if not found:
-                raise NovaRuntimeError(
-                    f"no method `{e.op}` for a value of head type {head!r} "
-                    f"— this should have been rejected by the checker")
-            return self.call_method(found[0].methods[e.op], recv, args)
+    def _eval_Match(self, e: a.Match, env: dict):
+        v = self.eval(e.scrutinee, env)
+        for arm in e.arms:
+            inner = dict(env)
+            if self._match_pattern(arm.pattern, v, inner):
+                return self.eval(arm.body, inner)
+        raise NovaRuntimeError(f"no pattern matched {v!r}")
 
-        raise AssertionError(f"unhandled expression: {type(e).__name__}")
+    def _eval_Call(self, e: a.Call, env: dict):
+        f = self.eval(e.callee, env)
+        args = [self.eval(x, env) for x in e.args]
+        return self.apply(f, args, e)
+
+    def _eval_MethodCall(self, e: a.MethodCall, env: dict):
+        recv = self.eval(e.recv, env)
+        args = [self.eval(x, env) for x in e.args]
+        if isinstance(recv, CapValue):
+            impl = recv.ops.get(e.op)
+            if impl is None:
+                raise Diagnostic(
+                    "E0301",
+                    f"`{recv.cap_name}.{e.op}` has no host implementation",
+                    [Label(e.op_span, "cannot be executed")],
+                    notes=["the reference interpreter implements only "
+                           "the prelude capabilities; this program can "
+                           "be checked but not run"])
+            return impl(*args)
+        head = _runtime_head(recv)
+        found = [info for (_, h), info in self.r.impls.items()
+                if h == head and e.op in info.methods]
+        if not found:
+            raise NovaRuntimeError(
+                f"no method `{e.op}` for a value of head type {head!r} "
+                f"— this should have been rejected by the checker")
+        return self.call_method(found[0].methods[e.op], recv, args)
+
+    # Built once per class from the `_eval_<TypeName>` methods above,
+    # keyed by the exact AST node class (every concrete Expr subclass is
+    # a direct, non-nested subclass of Expr — see ast.py — so there is no
+    # subclassing ambiguity an exact-type dict could get wrong that the
+    # old isinstance chain wouldn't). Unbound functions, not bound
+    # methods: `self` is passed explicitly in `eval`, so this dict is
+    # shared across all Interpreter instances rather than rebuilt per
+    # instance.
+    _EVAL_DISPATCH = {
+        a.IntLit: _eval_IntLit,
+        a.StrLit: _eval_StrLit,
+        a.BoolLit: _eval_BoolLit,
+        a.UnitLit: _eval_UnitLit,
+        a.Var: _eval_Var,
+        a.Unary: _eval_Unary,
+        a.Binary: _eval_Binary,
+        a.If: _eval_If,
+        a.While: _eval_While,
+        a.For: _eval_For,
+        a.Assign: _eval_Assign,
+        a.Block: _eval_Block,
+        a.Lambda: _eval_Lambda,
+        a.TupleLit: _eval_TupleLit,
+        a.StructLit: _eval_StructLit,
+        a.EnumCtor: _eval_EnumCtor,
+        a.FieldAccess: _eval_FieldAccess,
+        a.Match: _eval_Match,
+        a.Call: _eval_Call,
+        a.MethodCall: _eval_MethodCall,
+    }
 
     def apply(self, f, args, site):
         if isinstance(f, tuple) and f[0] == "fn":
@@ -358,23 +453,43 @@ class Interpreter:
         matching arm at runtime indicates a checker bug, not a NOVA
         program error — hence `NovaRuntimeError`, not a `Diagnostic`,
         at the `Match` call site above."""
-        if isinstance(p, a.PWildcard):
-            return True
-        if isinstance(p, a.PBind):
-            env[p.name] = [v]
-            return True
-        if isinstance(p, a.PInt):
-            return v == p.value
-        if isinstance(p, a.PBool):
-            return v == p.value
-        if isinstance(p, a.PString):
-            return v == p.value
-        if isinstance(p, a.PTuple):
-            return all(self._match_pattern(sub, x, env)
-                      for sub, x in zip(p.elems, v))
-        if isinstance(p, a.PVariant):
-            if not (isinstance(v, EnumValue) and v.variant == p.variant):
-                return False
-            return all(self._match_pattern(sub, x, env)
-                      for sub, x in zip(p.args, v.args))
-        raise AssertionError(f"unhandled pattern: {type(p).__name__}")
+        handler = self._PATTERN_DISPATCH.get(type(p))
+        if handler is None:
+            raise AssertionError(f"unhandled pattern: {type(p).__name__}")
+        return handler(self, p, v, env)
+
+    def _match_PWildcard(self, p: a.PWildcard, v, env: dict) -> bool:
+        return True
+
+    def _match_PBind(self, p: a.PBind, v, env: dict) -> bool:
+        env[p.name] = [v]
+        return True
+
+    def _match_PInt(self, p: a.PInt, v, env: dict) -> bool:
+        return v == p.value
+
+    def _match_PBool(self, p: a.PBool, v, env: dict) -> bool:
+        return v == p.value
+
+    def _match_PString(self, p: a.PString, v, env: dict) -> bool:
+        return v == p.value
+
+    def _match_PTuple(self, p: a.PTuple, v, env: dict) -> bool:
+        return all(self._match_pattern(sub, x, env)
+                  for sub, x in zip(p.elems, v))
+
+    def _match_PVariant(self, p: a.PVariant, v, env: dict) -> bool:
+        if not (isinstance(v, EnumValue) and v.variant == p.variant):
+            return False
+        return all(self._match_pattern(sub, x, env)
+                  for sub, x in zip(p.args, v.args))
+
+    _PATTERN_DISPATCH = {
+        a.PWildcard: _match_PWildcard,
+        a.PBind: _match_PBind,
+        a.PInt: _match_PInt,
+        a.PBool: _match_PBool,
+        a.PString: _match_PString,
+        a.PTuple: _match_PTuple,
+        a.PVariant: _match_PVariant,
+    }
