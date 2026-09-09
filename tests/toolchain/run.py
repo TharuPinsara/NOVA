@@ -21,6 +21,7 @@ sys.path.insert(0, ROOT)
 from compiler.nova_compiler.fmt import format_code                   # noqa: E402
 from compiler.nova_compiler.lint import lint_file                    # noqa: E402
 from compiler.nova_compiler.pkg import add_dependency, is_semver     # noqa: E402
+from compiler.nova_compiler.driver import NovaCompiler               # noqa: E402
 from verifier.refspec.diagnostics import Diagnostic, Label, Source, Span  # noqa: E402
 
 EXAMPLES = os.path.join(ROOT, "examples")
@@ -184,6 +185,30 @@ def test_add_rejects_bad_version_without_touching_manifest():
     assert "drop the leading `v`" in err.getvalue(), err.getvalue()
     want = 'analytics = { version = "1.2.0-beta.1", capabilities = ["Network"] }'
     assert want in text, text
+
+
+# ---------------------------------------------------------------- WASI security
+
+def test_wasi_build_fails_closed_instead_of_emitting_host_runner():
+    """A requested WASI guest must never be replaced by a host-authority script."""
+    source = """fn main(rt: Runtime) -> Int ! {Runtime} {
+    rt.print("sandbox probe");
+    0
+}
+"""
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "guest.nova")
+        output = os.path.join(d, "guest.wasm")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(source)
+        success, message, metrics = NovaCompiler(
+            cache_dir=os.path.join(d, ".nova_cache")).build_file(
+                path, output_binary=output, target="wasi")
+
+        assert success is False
+        assert metrics is None
+        assert "refusing to emit an interpreter-backed artifact" in message
+        assert not os.path.exists(output), "WASI build emitted a host runner"
 
 
 def main() -> int:

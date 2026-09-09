@@ -309,6 +309,10 @@ def compile_to_native(check_result: CheckResult, output_binary_path: str,
     Returns True on success; raises `RuntimeError` if clang rejects the
     generated C (which would be a backend bug).
     """
+    # Never use this native backend as a substitute for a WASI guest. The
+    # driver rejects these targets rather than falling back to its
+    # host-authority interpreter; a real Preview 2 backend must construct
+    # preopens solely from explicit manifest capability tokens.
     if target in ("wasm", "wasi"):
         # The generated C uses libc (stdio, string, time). A real WASM
         # target needs a freestanding NOVA runtime and a component-model
