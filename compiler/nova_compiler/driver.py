@@ -145,7 +145,8 @@ class NovaCompiler:
         try:
             hir_mod = lower_ast_to_hir(
                 unit.program.decls,
-                module_name=os.path.splitext(os.path.basename(path))[0])
+                module_name=os.path.splitext(os.path.basename(path))[0],
+                check_result=unit.result)
             lower_hir_to_mir(hir_mod)
         except Exception:  # pragma: no cover - lowering is advisory
             pass

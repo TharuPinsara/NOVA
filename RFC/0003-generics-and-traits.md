@@ -2,10 +2,6 @@
 
 - **Status:** Implemented
 - **Created:** 2026-08-28
-- **Depends on:** RFC 0001, RFC 0002
-- **Tier:** Optional language feature ([DESIGN-PRINCIPLES.md](../docs/foundation/DESIGN-PRINCIPLES.md))
-
-## 1. Summary
 
 Parametric polymorphism (`fn identity[T](x: T) -> T`) and structural
 trait bounds (`fn describe[T: Show](x: T) -> String`), checked by
@@ -16,12 +12,9 @@ one additional case in `unify_types`.
 ## 2. Problem
 
 Without generics, RFC 0001 §2's `with_retry` is the *only* function that
-can be written once and reused across types — because it is polymorphic
 in its *row*, not in any ordinary type, and rows already had variables.
 Every other reusable function (`identity`, a generic `List`, a `max`)
-needed either duplication per type or (worse) an unsound escape hatch.
 
-## 3. Design: type variables are row variables' twin
 
 RFC 0001 already has: a rigid row variable, bound by an enclosing
 `fn f[r](...)`; a flexible row variable, freshened at each call site
@@ -32,21 +25,16 @@ RFC 0003 adds exactly the same structure for ordinary types:
 ```
 TVar("T")     -- rigid inside the function that declares [T]
 TVar("?T1")   -- flexible, fresh, created at instantiation
-```
 
 `instantiate()` (RFC 0001, extended here) freshens **both** kinds of
-rigid variable in one traversal, so a function that is simultaneously
 row-polymorphic and type-polymorphic — `with_retry[T, r]`, if written
-generically over its value type too — is instantiated in a single pass.
 `unify_types` gained the corresponding case: a flexible type variable
 binds to whatever it meets, exactly as a flexible row variable already
 did (see §3.1 for the one subtlety this raised).
 
 ### 3.1 One subtlety found during implementation
-
 A rigid type variable and a flexible one can share a *name* by
 coincidence — e.g. `prepend[T](x: T, xs: List[T])` calling
-`List::Cons(x, xs)`, where `List`'s own declared type parameter is also
 named `T`. `unify_types`'s first implementation checked "is the LEFT
 side a `TVar`?" and returned early in every branch of that check,
 including when the left side was rigid and the right was a *different*,
@@ -83,10 +71,8 @@ Explicit instantiation is deferred, not designed against.
 
 ```nova
 trait Show { fn show(self) -> String; }
-impl Show for Point { fn show(self) -> String { "a point" } }
 ```
 
-- Trait method signatures exclude the implicit `self`; `self`'s type is
   literally `Self`, resolved (inside an `impl` body only) to that impl's
   concrete target type.
 - **No default method bodies** in v0.2 — every `impl` must provide every

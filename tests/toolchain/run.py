@@ -22,12 +22,53 @@ from compiler.nova_compiler.fmt import format_code                   # noqa: E40
 from compiler.nova_compiler.lint import lint_file                    # noqa: E402
 from compiler.nova_compiler.pkg import add_dependency, is_semver     # noqa: E402
 from compiler.nova_compiler.driver import NovaCompiler               # noqa: E402
+from compiler.nova_compiler.hir import HIRMethodCall, lower_ast_to_hir  # noqa: E402
 from verifier.refspec.diagnostics import Diagnostic, Label, Source, Span  # noqa: E402
+from verifier.refspec.driver import compile_source                    # noqa: E402
 
 EXAMPLES = os.path.join(ROOT, "examples")
 
 
 # ---------------------------------------------------------- diagnostics
+
+def test_hir_preserves_generic_and_trait_dispatch_metadata():
+    source = """struct Point { value: Int }
+trait Show { fn show(self) -> String; }
+impl Show for Point { fn show(self) -> String { \"point\" } }
+fn identity[T](x: T) -> T { x }
+fn main(rt: Runtime) -> Int ! {Runtime} {
+    let p = Point { value: 1 };
+    rt.print(p.show());
+    identity(0)
+}
+"""
+    unit = compile_source(source, "<hir-test>")
+    hir = lower_ast_to_hir(unit.program.modules[-1].decls,
+                           check_result=unit.result)
+
+    identity = next(fn for fn in hir.functions if fn.name == "identity")
+    assert identity.type_params == ["T"]
+    assert [(trait.name, trait.methods) for trait in hir.traits] == [
+        ("Show", ["show"])]
+    assert [(impl.trait_name, impl.methods) for impl in hir.impls] == [
+        ("Show", ["show"])]
+
+    main = next(fn for fn in hir.functions if fn.name == "main")
+    calls = []
+
+    def visit(expr):
+        if isinstance(expr, HIRMethodCall):
+            calls.append(expr)
+        for value in vars(expr).values():
+            if isinstance(value, list):
+                for item in value:
+                    if hasattr(item, "__dataclass_fields__"):
+                        visit(item)
+            elif hasattr(value, "__dataclass_fields__"):
+                visit(value)
+
+    visit(main.body)
+    assert any(call.dispatch_target == "Show::show" for call in calls)
 
 def _render(text: str, start: int, end: int) -> tuple[str, str]:
     """The (source, caret) line pair of a one-label diagnostic on `text`."""

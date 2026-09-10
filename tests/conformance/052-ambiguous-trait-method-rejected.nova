@@ -1,0 +1,13 @@
+//! expect: error E0129
+// A receiver cannot silently select one of two trait methods with the same
+// name; dispatch must remain statically unambiguous.
+struct Point { value: Int }
+trait Show { fn render(self) -> String; }
+trait Render { fn render(self) -> String; }
+impl Show for Point { fn render(self) -> String { "show" } }
+impl Render for Point { fn render(self) -> String { "render" } }
+fn main(rt: Runtime) -> Int ! {Runtime} {
+    let p = Point { value: 1 };
+    p.render();
+    0
+}

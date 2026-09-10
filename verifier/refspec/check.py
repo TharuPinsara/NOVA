@@ -792,6 +792,16 @@ class Checker:
                         "E0108",
                         f"`{rt_}` has no method `{e.op}`",
                         [Label(e.op_span, "no `impl` provides it")])
+                if len(found) > 1:
+                    traits = sorted(self.impls[key].trait_name for key in found)
+                    raise Diagnostic(
+                        "E0129",
+                        f"method `{e.op}` is ambiguous for `{rt_}`",
+                        [Label(e.op_span, "multiple trait implementations "
+                                       "provide this method")],
+                        notes=["candidates: " + ", ".join(traits)],
+                        helps=["use a uniquely named method until explicit "
+                              "trait-qualified dispatch is supported"])
                 impl = self.impls[found[0]]
                 sig = self.traits[impl.trait_name].methods[e.op]
                 target_map = dict(zip(impl.type_params,
