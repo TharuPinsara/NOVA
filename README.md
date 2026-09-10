@@ -238,7 +238,7 @@ thinking is load-bearing, not because the code exists.
 
 | Category | Documents |
 | :--- | :--- |
-| **Foundation** | [Constitution](docs/foundation/LANGUAGE-CONSTITUTION.md) • [Philosophy](docs/foundation/LANGUAGE-PHILOSOPHY.md) • [Program Model](docs/foundation/PROGRAM-MODEL.md) • [Non-Goals](docs/foundation/NON-GOALS.md) • [Decision Log](docs/foundation/DECISION-LOG.md) • [Authority Map](docs/foundation/AUTHORITY-MAP.md) |
+| **Foundation** | [Constitution](docs/foundation/LANGUAGE-CONSTITUTION.md) • [Philosophy](docs/foundation/LANGUAGE-PHILOSOPHY.md) • [Program Model](docs/foundation/PROGRAM-MODEL.md) • [Non-Goals](docs/foundation/NON-GOALS.md) • [Decision Log](docs/foundation/DECISION-LOG.md) • [Authority Map](docs/foundation/AUTHORITY-MAP.md) • [Epic implementation status](docs/foundation/EPIC-IMPLEMENTATION-STATUS.md) |
 | **Language** | [Syntax & Grammar](docs/language/SYNTAX.md) • [Type System](docs/language/TYPE-SYSTEM.md) • [Effect System](docs/language/EFFECT-SYSTEM.md) • [Capabilities](docs/language/CAPABILITY-MODEL.md) • [Memory Model](docs/language/MEMORY-MODEL.md) |
 | **RFCs** | [0001 core](RFC/0001-core-capability-effects.md) • [0002 data types](RFC/0002-structs-tuples-enums-pattern-matching.md) • [0003 generics/traits](RFC/0003-generics-and-traits.md) • [0004 modules](RFC/0004-modules-and-imports.md) • [0005 mutability](RFC/0005-local-mutability-and-loops.md) |
 | **Honesty** | [Known issues](docs/known-issues.md) • [Roadmap](ROADMAP.md) |

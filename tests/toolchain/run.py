@@ -21,6 +21,7 @@ sys.path.insert(0, ROOT)
 from compiler.nova_compiler.fmt import format_code                   # noqa: E402
 from compiler.nova_compiler.lint import lint_file                    # noqa: E402
 from compiler.nova_compiler.pkg import add_dependency, is_semver     # noqa: E402
+from compiler.nova_compiler.driver import NovaCompiler                # noqa: E402
 from verifier.refspec.diagnostics import Diagnostic, Label, Source, Span  # noqa: E402
 
 EXAMPLES = os.path.join(ROOT, "examples")
@@ -108,6 +109,19 @@ def test_fmt_examples_are_canonical():
             out = format_code(src)
             assert out == src, f"{path} would be reformatted"
             assert format_code(out) == out, f"{path}: formatting is not idempotent"
+
+
+def test_enterprise_demo_is_explicitly_interpreter_backed():
+    """The full-stack example must not masquerade as native tier support."""
+    with tempfile.TemporaryDirectory() as d:
+        compiler = NovaCompiler(cache_dir=os.path.join(d, ".nova_cache"))
+        output = os.path.join(d, "enterprise-platform")
+        success, message, metrics = compiler.build_file(
+            os.path.join(EXAMPLES, "enterprise-platform.nova"),
+            output_binary=output)
+    assert success, message
+    assert metrics is not None
+    assert metrics.backend == "interpreter"
 
 
 # ----------------------------------------------------------------- lint
