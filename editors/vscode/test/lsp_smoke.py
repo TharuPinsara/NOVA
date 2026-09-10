@@ -17,6 +17,8 @@ import tempfile
 
 REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 NOVA = os.path.join(REPO_ROOT, "nova")
+NOVA_COMMAND = ([sys.executable, "-m", "compiler.nova_compiler.cli", "lsp"]
+                if os.name == "nt" else [NOVA, "lsp"])
 
 BAD_PROGRAM = "fn f(c: Clock) -> Int ! {} {\n    c.now()\n}\n"
 
@@ -55,8 +57,8 @@ def main() -> int:
 
     try:
         proc = subprocess.Popen(
-            [NOVA, "lsp"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
+            NOVA_COMMAND, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, cwd=REPO_ROOT)
         msgs = [
             {"jsonrpc": "2.0", "id": 1, "method": "initialize",
              "params": {"capabilities": {}}},

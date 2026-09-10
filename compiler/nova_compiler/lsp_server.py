@@ -54,10 +54,10 @@ class NovaLSPServer:
                 break
 
     def send_response(self, response: dict[str, Any]) -> None:
-        body = json.dumps(response)
-        header = f"Content-Length: {len(body)}\r\n\r\n"
-        sys.stdout.write(header + body)
-        sys.stdout.flush()
+        body = json.dumps(response).encode("utf-8")
+        header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
+        sys.stdout.buffer.write(header + body)
+        sys.stdout.buffer.flush()
 
     def handle_message(self, msg: dict[str, Any]) -> None:
         method = msg.get("method")
