@@ -6,6 +6,12 @@ shipped v0.2 language and its 45 conformance tests are unmodified by
 this phase; "build small compiler prototypes where necessary" was the
 brief, not "extend the production checker").
 
+`regionlab/` is authoritative only for the Region XOR prototype. It is not
+the language checker, parser, or production runtime; changes to those systems
+route to [`verifier/refspec/`](../verifier/refspec/) or
+[`compiler/nova_compiler/`](../compiler/nova_compiler/) according to the
+[authority map](../docs/foundation/AUTHORITY-MAP.md).
+
 This prototype tracks line numbers only, not full byte-range spans —
 ARCHITECTURE.md's "spans everywhere" rule binds the production compiler,
 not an experimental prototype whose entire purpose is to be small.

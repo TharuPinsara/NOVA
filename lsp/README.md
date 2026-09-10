@@ -5,6 +5,10 @@ A minimal LSP server. The implementation lives in
 `lsp/server.py` here is a thin `python3 -m lsp.server` entry point that
 delegates to it.
 
+This directory is a deprecated compatibility launcher, not a second LSP
+implementation. Protocol behavior and tests belong under
+`compiler/nova_compiler/` and `editors/vscode/`.
+
 ## Implemented today
 
 * **Diagnostics** on `didOpen` / `didChange` — runs the real checker and

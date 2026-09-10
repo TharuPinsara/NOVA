@@ -2,6 +2,12 @@
 
 The developer-facing CLI for NOVA. It is a thin driver around two things:
 
+The authoritative subsystem assignments are ratified in
+[`docs/foundation/AUTHORITY-MAP.md`](../docs/foundation/AUTHORITY-MAP.md).
+This directory owns the CLI, developer tooling, HIR/MIR scaffolding, and
+backend; it does not own language parsing, type inference, or interpreter
+semantics.
+
 1. **`verifier/refspec/`** — the reference frontend and interpreter. This
    is the authoritative implementation of the language: lexer, parser,
    Hindley–Milner type inference, row-typed effect checking, capability
@@ -30,6 +36,9 @@ Lexer → Parser → AST → name/module resolution → type & effect inference
 `HIR`/`MIR` (`hir.py`, `mir.py`) exist as **informational lowerings**
 surfaced by `--emit-hir` / `--emit-mir`. They are not on the execution
 path and are not a full IR yet.
+
+Do not add a second parser, checker, or interpreter here. Route those changes
+to [`verifier/refspec/`](../verifier/refspec/) and add a conformance test.
 
 ## Import discipline in `cli.py` / `driver.py`
 

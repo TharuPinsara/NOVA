@@ -68,3 +68,15 @@ test; put it in the implementation's own suite.
 - If your change makes a diagnostic worse, say so in the PR. Article X
   treats diagnostics as semantics.
 - Commits should explain *why*. The diff already says what.
+
+Before opening a PR, route the change using the ratified
+[authoritative subsystem map](docs/foundation/AUTHORITY-MAP.md). Language
+semantics belong in `verifier/refspec/` with a conformance test; CLI, HIR/MIR,
+backend, and LSP work belongs in `compiler/nova_compiler/`; Region XOR
+prototype work belongs in `regionlab/`; and `src/` is reserved for explicitly
+planned self-hosting experiments. Do not create a parallel parser, checker,
+interpreter, or LSP implementation in a secondary directory.
+
+PR descriptions must state the authority row, the validation command or test,
+and whether any secondary README or design document was corrected. See the
+map's contributor routing table for the complete subsystem breakdown.

@@ -17,3 +17,7 @@ intent and [ROADMAP.md](../ROADMAP.md) for the ordering.
 The authoritative compiler is the Python reference implementation in
 [`verifier/refspec/`](../verifier/refspec/) and
 [`compiler/nova_compiler/`](../compiler/nova_compiler/).
+
+The files under `src/` are deprecated bootstrap sketches, not a second
+compiler implementation. Do not add language or backend behavior here unless
+the change is explicitly part of a self-hosting migration plan.

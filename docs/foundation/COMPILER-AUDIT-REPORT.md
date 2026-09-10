@@ -71,9 +71,9 @@ Native Executable Binary (Stripped Mach-O / ELF / WASM Component)
 | :--- | :--- | :--- |
 | **CLI & Driver** | [`compiler/nova_compiler/`](../../compiler/nova_compiler/) (`./nova`) | Unified entrypoint for `check`, `build`, `run`, `test`, `fmt`, `lint`, `doc`, `add`, `remove`, `update`, `publish`, `deploy`, `lsp`, `bench`. |
 | **Frontend & Verifier** | [`verifier/refspec/`](../../verifier/refspec/) | Authoritative type, effect row, and capability reachability engine. |
-| **IR Transformations** | [`hir.py`](../../compiler/nova_compiler/hir.py) & [`mir.py`](../../compiler/nova_compiler/mir.py) | Fully integrated into compiler build pipeline with `--emit-hir` and `--emit-mir`. |
+| **IR Transformations** | [`hir.py`](../../compiler/nova_compiler/hir.py) & [`mir.py`](../../compiler/nova_compiler/mir.py) | Informational lowerings invoked during build validation and exposed by `--emit-hir` / `--emit-mir`; not the execution path or a complete production IR. |
 | **Memory Model** | [`regionlab/`](../../regionlab/) | Authoritative reference prototype for Region XOR memory model; 14/14 tests passing. |
-| **Self-Hosted Sources** | [`src/`](../../src/) | Stage 1 self-hosted compiler and standard library components compiling natively. |
+| **Self-Hosted Sources** | [`src/`](../../src/) | Deprecated bootstrap sketch; it parses as NOVA but does not implement compiler stages or compile natively. |
 
 ---
 
