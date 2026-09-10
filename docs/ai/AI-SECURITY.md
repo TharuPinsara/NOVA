@@ -12,6 +12,13 @@
 > implementation**. See [`README.md`](../../README.md),
 > [`ROADMAP.md`](../../ROADMAP.md) and
 > [`docs/known-issues.md`](../known-issues.md) for the real state.
+>
+> **Reference-interpreter boundary.** Autonomous invocations supported by
+> the executable reference model begin with no authority. The embedding host
+> must explicitly delegate interpreter-issued capability tokens through
+> `Interpreter.agent_sandbox(...)`; an undelegated disk or network token is
+> rejected before guest code runs. This is capability enforcement for NOVA
+> guest code, not a substitute for process isolation of untrusted Python.
 
 
 **Status:** Production Design Reference  

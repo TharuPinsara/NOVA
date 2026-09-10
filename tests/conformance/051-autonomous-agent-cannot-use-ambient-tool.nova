@@ -1,0 +1,11 @@
+//! expect: error E0101
+// An autonomous agent function has no ambient tool namespace. Declaring an
+// effect row is not a grant: it must receive an actual capability token.
+
+fn autonomous_probe() -> Bool ! {Filesystem} {
+    Filesystem.exists("secrets.txt")
+}
+
+fn main(rt: Runtime) -> Int ! {Runtime} {
+    0
+}

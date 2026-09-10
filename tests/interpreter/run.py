@@ -15,7 +15,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.insert(0, ROOT)
 
 from verifier.refspec.driver import compile_source          # noqa: E402
-from verifier.refspec.eval import Interpreter, NovaRuntimeError  # noqa: E402
+from verifier.refspec.eval import (  # noqa: E402
+    AgentAuthorityError,
+    CapValue,
+    Interpreter,
+    NovaRuntimeError,
+)
 
 # A NOVA program that recurses deep enough to exceed the interpreter's
 # Python-backed call stack on any machine (see docs/known-issues.md I6).
@@ -50,6 +55,69 @@ fn main(rt: Runtime) -> Int ! {Runtime} {
     sum_list(xs)
 }
 """
+
+
+_AGENT_SRC = """
+fn agent_probe(fs: Filesystem, path: String) -> Bool ! {Filesystem} {
+    fs.exists(path)
+}
+
+fn agent_fetch(net: Network, url: String) -> String ! {Network} {
+    net.get(url)
+}
+
+fn main(rt: Runtime) -> Int ! {Runtime} {
+    rt.print("agent authority test");
+    0
+}
+"""
+
+
+def _assert_raises(exc_type, fn):
+    try:
+        fn()
+    except exc_type:
+        return
+    except Exception as ex:
+        raise AssertionError(f"expected {exc_type.__name__}, got {ex!r}") from ex
+    raise AssertionError(f"expected {exc_type.__name__}")
+
+
+def test_agent_sandbox_has_zero_implicit_authority():
+    """An agent cannot smuggle a disk tool in from its interpreter host."""
+    unit = compile_source(_AGENT_SRC, name="<agent-authority>")
+    interp = Interpreter(unit.result)
+    runtime = interp.make_runtime()
+    filesystem = runtime.ops["filesystem"]()
+    network = runtime.ops["network"]()
+
+    # The host has a real disk token, but a fresh agent sandbox does not.
+    # Passing it to an invocation without delegating it must fail before the
+    # guest function gets an opportunity to access the host primitive.
+    _assert_raises(
+        AgentAuthorityError,
+        lambda: interp.agent_sandbox().run("agent_probe", filesystem, "nova.toml"),
+    )
+    _assert_raises(
+        AgentAuthorityError,
+        lambda: interp.agent_sandbox().run("agent_fetch", network, "https://example.test"),
+    )
+
+    # Names and look-alike Python objects are not authority.  Only a token
+    # issued by this exact interpreter may be delegated.
+    forged = CapValue("Filesystem", {"exists": lambda _: True})
+    _assert_raises(AgentAuthorityError, lambda: interp.agent_sandbox(forged))
+
+
+def test_agent_sandbox_uses_explicitly_delegated_capability_only():
+    unit = compile_source(_AGENT_SRC, name="<agent-delegation>")
+    interp = Interpreter(unit.result)
+    runtime = interp.make_runtime()
+    filesystem = runtime.ops["filesystem"]()
+
+    result = interp.agent_sandbox(filesystem).run(
+        "agent_probe", filesystem, "nova.toml")
+    assert result is True, result
 
 
 def test_deep_recursion_raises_clean_runtime_error():

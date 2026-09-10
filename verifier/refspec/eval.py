@@ -106,6 +106,51 @@ class NovaRuntimeError(Exception):
     pass
 
 
+class AgentAuthorityError(NovaRuntimeError):
+    """An autonomous invocation attempted authority it was not delegated."""
+
+
+class AgentSandbox:
+    """The authority boundary for an autonomous invocation.
+
+    An agent starts with an empty authority set.  The embedding host may
+    delegate *specific capability values* created by this interpreter; a
+    capability is never looked up from the ambient Runtime or from the host
+    process.  NOVA code run through :meth:`run` can therefore reach a host
+    primitive only when that exact capability appears in its argument list.
+
+    This deliberately is a capability boundary, not a Python security
+    boundary: untrusted Python must run out of process.  The reference
+    interpreter's supported guest language has no Python import, subprocess,
+    filesystem, or network primitive of its own.
+    """
+
+    def __init__(self, interpreter: "Interpreter", delegated=()) -> None:
+        self._interpreter = interpreter
+        self._delegated = frozenset(id(cap) for cap in delegated)
+        for cap in delegated:
+            interpreter._require_delegable_capability(cap)
+
+    def delegate(self, *capabilities: CapValue) -> "AgentSandbox":
+        """Return a child sandbox with an explicitly attenuated grant."""
+        for cap in capabilities:
+            self._interpreter._require_delegable_capability(cap)
+            if id(cap) not in self._delegated:
+                raise AgentAuthorityError(
+                    "cannot delegate a capability that is not in the "
+                    "current agent's lexical authority")
+        return AgentSandbox(self._interpreter, capabilities)
+
+    def run(self, name: str, *args):
+        """Run a named NOVA function with only explicitly passed authority."""
+        for arg in args:
+            if isinstance(arg, CapValue) and id(arg) not in self._delegated:
+                raise AgentAuthorityError(
+                    f"agent invocation of `{name}` was not delegated "
+                    f"the `{arg.cap_name}` capability")
+        return self._interpreter.call_fn(name, list(args))
+
+
 def _runtime_head(v) -> str | None:
     """The nominal type name of a runtime value, for trait-method
     dispatch. `bool` is checked before `int` because `bool` is a Python
@@ -159,22 +204,45 @@ class Interpreter:
         self._t0 = time.monotonic_ns()
         self.list_allocation_count = 0
         self.list_allocation_bytes = 0
+        # Identity, rather than a capability name, makes grants
+        # unforgeable at the host boundary as well as in the NOVA checker.
+        self._issued_capabilities: set[int] = set()
 
     # ------------------------------------------------ host capabilities
+    def _issue_capability(self, cap_name: str, ops: dict) -> CapValue:
+        cap = CapValue(cap_name, ops)
+        self._issued_capabilities.add(id(cap))
+        return cap
+
+    def _require_delegable_capability(self, cap) -> None:
+        if not isinstance(cap, CapValue) or id(cap) not in self._issued_capabilities:
+            raise AgentAuthorityError(
+                "agent authority must be an explicit capability token "
+                "issued by this interpreter")
+
+    def agent_sandbox(self, *delegated: CapValue) -> AgentSandbox:
+        """Create an autonomous invocation with zero authority by default.
+
+        Passing no arguments is the secure default.  A host that wants an
+        agent to use a tool must first obtain its capability lexically and
+        pass that exact token here, then pass it to the agent function.
+        """
+        return AgentSandbox(self, delegated)
+
     def make_runtime(self) -> CapValue:
-        clock = CapValue("Clock", {
+        clock = self._issue_capability("Clock", {
             "now": lambda: (time.monotonic_ns() - self._t0) // 1_000_000,
         })
-        filesystem = CapValue("Filesystem", {
+        filesystem = self._issue_capability("Filesystem", {
             "read": self._fs_read,
             "write": self._fs_write,
             "exists": self._fs_exists,
         })
-        network = CapValue("Network", {
+        network = self._issue_capability("Network", {
             "get": lambda url: self._net(url, None),
             "post": lambda url, body: self._net(url, body),
         })
-        return CapValue("Runtime", {
+        return self._issue_capability("Runtime", {
             "clock": lambda: clock,
             "filesystem": lambda: filesystem,
             "network": lambda: network,
