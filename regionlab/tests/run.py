@@ -13,6 +13,7 @@ sys.path.insert(0, ROOT)
 
 from regionlab.checker import CheckError, check   # noqa: E402
 from regionlab.parser import ParseError, parse     # noqa: E402
+from regionlab.tests.test_concurrent_handoff import run as run_concurrent_handoff  # noqa: E402
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 DIRECTIVE = re.compile(r"^#\s*expect:\s*(.+)$")
@@ -57,7 +58,14 @@ def main() -> int:
         print(f"  {'ok  ' if ok else 'FAIL'} {f}" + ("" if ok else f" — {msg}"))
         passed += ok
         failed += not ok
-    print(f"\n{passed} passed, {failed} failed, {len(files)} total")
+    try:
+        run_concurrent_handoff()
+        print("  ok   concurrent work-stealing handoff")
+        passed += 1
+    except Exception as ex:
+        print(f"  FAIL concurrent work-stealing handoff — {ex}")
+        failed += 1
+    print(f"\n{passed} passed, {failed} failed, {len(files) + 1} total")
     return 0 if not failed else 1
 
 

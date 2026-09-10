@@ -343,6 +343,24 @@ capabilities; affine-by-default ordinary values (Rust's `Copy`/`Clone`
 split, kept because it is uncontroversial, not reinvented); no named
 lifetime syntax anywhere in NOVA source.
 
+### 8.1 Concurrent frame migration (reference protocol)
+
+The v0.2 compiler has no task runtime yet, so work stealing is not an
+ambient implementation detail that a region capability may ignore. When a
+future scheduler preempts a frame holding `Excl(Region)`, it must acquire
+that frame's synchronization gate, atomically transfer the exclusive lease
+from the donor worker to the thief, and only then publish the new frame
+owner. The old owner must fail any subsequent access attempt. The gate is
+also held while guest code is using the frame, so a steal cannot overlap a
+write. This preserves Shared Read XOR Exclusive Write across migration rather
+than merely before and after it.
+
+[`regionlab/runtime.py`](../../regionlab/runtime.py) is an executable
+reference model of this protocol. Its concurrent regression test repeatedly
+contends frame steals and verifies that the donor is revoked before the thief
+can write. It is Python-level synchronization coverage; TSan applies once a
+native scheduler exists, not to this prototype.
+
 **Left open, explicitly, for later RFCs:** the exact region-inference
 algorithm (whether regions are always lexically scoped or can be
 inferred more flexibly, à la ML-Kit); whether a region can itself be
